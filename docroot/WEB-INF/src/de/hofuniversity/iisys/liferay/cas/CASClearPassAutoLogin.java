@@ -11,15 +11,15 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
 
-import org.osgi.service.component.annotations.Component;
-
 import com.liferay.portal.kernel.log.Log;
 import com.liferay.portal.kernel.log.LogFactoryUtil;
-import com.liferay.portal.kernel.model.User;
-import com.liferay.portal.kernel.security.auto.login.AutoLogin;
-import com.liferay.portal.kernel.security.auto.login.BaseAutoLogin;
-import com.liferay.portal.kernel.service.UserLocalServiceUtil;
-import com.liferay.portal.kernel.util.PortalUtil;
+import com.liferay.portal.model.User;
+import com.liferay.portal.security.auth.AutoLogin;
+import com.liferay.portal.security.auth.BaseAutoLogin;
+import com.liferay.portal.service.UserLocalServiceUtil;
+import com.liferay.portal.util.PortalUtil;
+
+import de.hofuniversity.iisys.liferay.cas.servlet.CASProxyServlet;
 
 /**
  * CAS autologin hook using ClearPass to retrieve and temporarily store the
@@ -29,8 +29,6 @@ import com.liferay.portal.kernel.util.PortalUtil;
  * 
  * Has an opt-out option triggered by supplying the parameter "casOptOut=true".
  */
-// new osgi mechanism?
-@Component(immediate = true, service = AutoLogin.class)
 public class CASClearPassAutoLogin extends BaseAutoLogin
 {
 	private static Log _log = LogFactoryUtil
@@ -45,7 +43,6 @@ public class CASClearPassAutoLogin extends BaseAutoLogin
 	private static final String DEBUG_LOG_PROP = "autologin.cas.debug_logging";
 	
 	private static final String CAS_USER_ATT = "CAS_USER";
-	private static final String CAS_USER_PW = "CAS_PASSWORD";
 	private static final String CAS_TICKET_ATT = "CAS_TICKET";
 	private static final String CAS_OPTOUT_ATT = "CAS_OPTOUT";
 	private static final String ORIGINAL_URL_ATT = "ORIGINAL_URL";
@@ -115,22 +112,6 @@ public class CASClearPassAutoLogin extends BaseAutoLogin
 		{
 			boolean handled = false;
 			
-			//check if called for already authenticated user
-			if(session.getAttribute(CAS_USER_ATT) != null)
-			{
-				handled = true;
-				
-				Long user = (Long) session.getAttribute(CAS_USER_ATT);
-				String password = (String) session.getAttribute(CAS_USER_PW);
-				
-				if(fDebug)
-				{
-					_log.info("already logged in!");
-				}
-				
-				credentials = new String[] {Long.toString(user), password, "false"};
-			}
-			
 			//check whether user wants to opt-out
 			handled = handleOptOut(request, response, session);
 			
@@ -146,13 +127,6 @@ public class CASClearPassAutoLogin extends BaseAutoLogin
 		catch(Exception e)
 		{
 			_log.warn("ClearPassHook Exception: ", e);
-		}
-		
-		if(credentials != null)
-		{
-//			session.setAttribute("j_username", credentials[0]);
-//			session.setAttribute("j_password", credentials[1]);
-			session.setAttribute(CAS_USER_ATT, Long.parseLong(credentials[0]));
 		}
 		
 		return credentials;
@@ -230,7 +204,7 @@ public class CASClearPassAutoLogin extends BaseAutoLogin
 				{
 					_log.info("\tusing tgt iou: " + replyData[1]);
 				}
-				tgt = CasClearPassWS.getTicket(replyData[1]);
+				tgt = CASProxyServlet.getTicket(replyData[1]);
 				if(fDebug)
 				{
 					_log.info("\textracted tgt: " + tgt);
@@ -271,10 +245,10 @@ public class CASClearPassAutoLogin extends BaseAutoLogin
 				{
 					if(fDebug)
 					{
-						//_log.info("redirecting back to: " + origUrl);
+						_log.info("redirecting back to: " + origUrl);
 					}
 					session.removeAttribute(ORIGINAL_URL_ATT);
-					//request.setAttribute(AutoLogin.AUTO_LOGIN_REDIRECT_AND_CONTINUE, origUrl);
+					request.setAttribute(AutoLogin.AUTO_LOGIN_REDIRECT_AND_CONTINUE, origUrl);
 				}
 				
 				//clear temporary variables
@@ -367,16 +341,7 @@ public class CASClearPassAutoLogin extends BaseAutoLogin
 		String[] credentials = new String[3];
 
 		credentials[0] = String.valueOf(userId);
-		
-		if(password != null)
-		{
-			credentials[1] = password;
-		}
-		else
-		{
-			//TODO: remove
-			credentials[1] = "secret";
-		}
+		credentials[1] = password;
 		
 		//no password validation
 		credentials[2] = Boolean.FALSE.toString();
